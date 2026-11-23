@@ -32,6 +32,8 @@ def check_headers(headers: dict) -> tuple[int, str]:
 class RequestHandler(BaseHTTPRequestHandler):
     """Handle HTTP requests."""
 
+    protocol_version = "HTTP/1.1"
+
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
         if length == 0:
@@ -72,6 +74,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                     query[k] = v
         return parts, query
 
+    def _safe_int(self, value: str) -> int:
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return 0
+
     def _process_request(self) -> None:
         if not self._check_headers():
             return
@@ -80,37 +88,42 @@ class RequestHandler(BaseHTTPRequestHandler):
         body = self._read_body()
         prefix = ["rest", "api", "v1.0"]
 
-        if parts[:3] != prefix:
+        if len(parts) < 4 or parts[:3] != prefix:
             self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
             return
 
-        resource = parts[3] if len(parts) > 3 else ""
+        resource = parts[3]
         action = parts[4] if len(parts) > 4 else ""
         arg = parts[5] if len(parts) > 5 else ""
 
-        if resource == "session":
-            self._handle_session(action, arg, body, query)
-        elif resource == "instruction":
-            self._handle_instruction(action, arg, body, query)
-        elif resource == "response":
-            self._handle_response(action, arg, query)
-        elif resource == "report":
-            self._send_json(const.HTTP_OK, storage.get_report())
-        else:
-            self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
+        try:
+            if resource == "session":
+                self._handle_session(action, arg, body, query)
+            elif resource == "instruction":
+                self._handle_instruction(action, arg, body, query)
+            elif resource == "response":
+                self._handle_response(action, arg, query)
+            elif resource == "report":
+                self._send_json(const.HTTP_OK, storage.get_report())
+            else:
+                self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
+        except Exception as err:
+            self._handle_error(
+                const.HTTP_INTERNAL_SERVER_ERROR, str(err)
+            )
 
     def _handle_session(self, action: str, arg: str, body: dict, query: dict) -> None:
         if action == "submit" and self.command == "PUT":
-            uid = int(arg)
+            uid = self._safe_int(arg)
             data = storage.add_session(uid, body)
             self._send_json(const.HTTP_OK, data)
         elif action == "pop" and self.command == "DELETE":
-            success = storage.pop_session(int(arg))
+            success = storage.pop_session(self._safe_int(arg))
             self._send_json(const.HTTP_OK, {"success": success})
         elif action == "search" and self.command == "GET":
             self._send_json(const.HTTP_OK, storage.get_sessions())
         elif action == "adjust" and self.command == "POST":
-            uid = int(body.get("uid", 0))
+            uid = self._safe_int(str(body.get("uid", 0)))
             data = storage.update_session(uid, body)
             self._send_json(const.HTTP_OK, data or {})
         else:
@@ -118,18 +131,19 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_instruction(self, action: str, arg: str, body: dict, query: dict) -> None:
         if action == "submit" and self.command == "PUT":
-            uid = int(arg)
+            uid = self._safe_int(arg)
             data = storage.add_instruction(uid, body)
             if not TEST_MODE:
                 self._run_cli(data)
             self._send_json(const.HTTP_OK, data)
         elif action == "pop" and self.command == "DELETE":
-            success = storage.pop_instruction(int(arg))
+            success = storage.pop_instruction(self._safe_int(arg))
             self._send_json(const.HTTP_OK, {"success": success})
         elif action == "search" and self.command == "GET":
-            self._send_json(const.HTTP_OK, storage.get_instructions(int(arg)))
+            session_id = self._safe_int(arg)
+            self._send_json(const.HTTP_OK, storage.get_instructions(session_id))
         elif action == "adjust" and self.command == "POST":
-            uid = int(body.get("uid", 0))
+            uid = self._safe_int(str(body.get("uid", 0)))
             data = storage.update_instruction(uid, body)
             self._send_json(const.HTTP_OK, data or {})
         else:
@@ -137,7 +151,10 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_response(self, action: str, arg: str, query: dict) -> None:
         if action == "search" and self.command == "GET":
-            self._send_json(const.HTTP_OK, storage.get_responses(int(arg)))
+            instruction_id = self._safe_int(arg)
+            self._send_json(
+                const.HTTP_OK, storage.get_responses(instruction_id)
+            )
         else:
             self._handle_error(const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed")
 

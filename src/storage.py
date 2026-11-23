@@ -92,11 +92,11 @@ def get_responses(instruction_id: int) -> list[dict[str, Any]]:
 def get_report() -> list[dict[str, Any]]:
     """Get report of recent responses."""
     now = int(time.time())
-    threshold = now - REPORT_WINDOW_MINUTES * 60
+    threshold = now - 6 * 60
     result = []
     for resp in responses.values():
-        if resp["created"] > threshold:
-            instr = instructions.get(resp["instruction"])
+        if resp.get("created", 0) > threshold:
+            instr = instructions.get(resp.get("instruction"))
             if instr:
-                result.append({"description": instr["description"]})
+                result.append({"description": instr.get("description", "")})
     return result
