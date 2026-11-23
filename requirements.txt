@@ -1,0 +1,6 @@
+hypothesis
+pony
+coverage
+flake8
+radon
+pytest
