@@ -4,11 +4,13 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
 from src import constants as const
 from src import storage
+from src.db import init_db
 
 TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
 
@@ -108,6 +110,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             else:
                 self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
         except Exception as err:
+            traceback.print_exc()
             self._handle_error(
                 const.HTTP_INTERNAL_SERVER_ERROR, str(err)
             )
@@ -191,6 +194,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 def run_server(port: int = const.DEFAULT_PORT) -> None:
     """Start the HTTP server."""
+    init_db()
     server = HTTPServer(("", port), RequestHandler)
     print(f"Server running on port {port}...")
     server.serve_forever()
