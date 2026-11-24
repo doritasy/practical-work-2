@@ -22,8 +22,8 @@ RESOURCE_REPORT = "report"
 
 def check_headers(headers: dict) -> tuple[int, str]:
     """Validate required headers."""
-    method = headers.get("_method", "GET")
-    if method in ("POST", "PUT", "PATCH"):
+    method = headers.get("_method", const.METHOD_GET)
+    if method in (const.METHOD_POST, const.METHOD_PUT, const.METHOD_PATCH):
         if headers.get(const.HEADER_CONTENT_TYPE) != const.VALUE_JSON:
             return (
                 const.HTTP_UNSUPPORTED_MEDIA_TYPE,
@@ -98,75 +98,101 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
             return
 
-        resource = parts[3]
-        action = parts[4] if len(parts) > 4 else ""
-        arg = parts[5] if len(parts) > 5 else ""
-
         try:
-            if resource == RESOURCE_SESSION:
-                self._handle_session(action, arg, body, query)
-            elif resource == RESOURCE_INSTRUCTION:
-                self._handle_instruction(action, arg, body, query)
-            elif resource == RESOURCE_RESPONSE:
-                self._handle_response(action, arg, query)
-            elif resource == RESOURCE_REPORT:
-                self._send_json(const.HTTP_OK, storage.get_report())
-            else:
-                self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
+            self._route_request(parts, body, query)
         except Exception as err:
             traceback.print_exc()
             self._handle_error(
                 const.HTTP_INTERNAL_SERVER_ERROR, str(err)
             )
 
+    def _route_request(
+        self, parts: list[str], body: dict, query: dict
+    ) -> None:
+        resource = parts[3]
+        action = parts[4] if len(parts) > 4 else ""
+        arg = parts[5] if len(parts) > 5 else ""
+
+        if resource == RESOURCE_SESSION:
+            self._handle_session(action, arg, body, query)
+        elif resource == RESOURCE_INSTRUCTION:
+            self._handle_instruction(action, arg, body, query)
+        elif resource == RESOURCE_RESPONSE:
+            self._handle_response(action, arg, query)
+        elif resource == RESOURCE_REPORT:
+            self._send_json(const.HTTP_OK, storage.get_report())
+        else:
+            self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
+
     def _handle_session(
         self, action: str, arg: str, body: dict, query: dict
     ) -> None:
-        if action == "submit" and self.command == "PUT":
-            uid = self._safe_int(arg)
-            data = storage.add_session(uid, body)
-            self._send_json(const.HTTP_OK, data)
-        elif action == "pop" and self.command == "DELETE":
-            success = storage.pop_session(self._safe_int(arg))
-            self._send_json(const.HTTP_OK, {"success": success})
-        elif action == "search" and self.command == "GET":
+        if action == "submit" and self.command == const.METHOD_PUT:
+            self._session_submit(arg, body)
+        elif action == "pop" and self.command == const.METHOD_DELETE:
+            self._session_pop(arg)
+        elif action == "search" and self.command == const.METHOD_GET:
             self._send_json(const.HTTP_OK, storage.get_sessions())
-        elif action == "adjust" and self.command == "POST":
-            uid = self._safe_int(str(body.get("uid", 0)))
-            data = storage.update_session(uid, body)
-            self._send_json(const.HTTP_OK, data or {})
+        elif action == "adjust" and self.command == const.METHOD_POST:
+            self._session_adjust(body)
         else:
             self._handle_error(
                 const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed"
             )
+
+    def _session_submit(self, arg: str, body: dict) -> None:
+        uid = self._safe_int(arg)
+        data = storage.add_session(uid, body)
+        self._send_json(const.HTTP_OK, data)
+
+    def _session_pop(self, arg: str) -> None:
+        success = storage.pop_session(self._safe_int(arg))
+        self._send_json(const.HTTP_OK, {"success": success})
+
+    def _session_adjust(self, body: dict) -> None:
+        uid = self._safe_int(str(body.get("uid", 0)))
+        data = storage.update_session(uid, body)
+        self._send_json(const.HTTP_OK, data or {})
 
     def _handle_instruction(
         self, action: str, arg: str, body: dict, query: dict
     ) -> None:
-        if action == "submit" and self.command == "PUT":
-            uid = self._safe_int(arg)
-            data = storage.add_instruction(uid, body)
-            if not TEST_MODE:
-                self._run_cli(data)
-            self._send_json(const.HTTP_OK, data)
-        elif action == "pop" and self.command == "DELETE":
-            success = storage.pop_instruction(self._safe_int(arg))
-            self._send_json(const.HTTP_OK, {"success": success})
-        elif action == "search" and self.command == "GET":
-            session_id = self._safe_int(arg)
-            instructions = storage.get_instructions(session_id)
-            self._send_json(const.HTTP_OK, instructions)
-        elif action == "adjust" and self.command == "POST":
-            uid = self._safe_int(str(body.get("uid", 0)))
-            data = storage.update_instruction(uid, body)
-            self._send_json(const.HTTP_OK, data or {})
+        if action == "submit" and self.command == const.METHOD_PUT:
+            self._instruction_submit(arg, body)
+        elif action == "pop" and self.command == const.METHOD_DELETE:
+            self._instruction_pop(arg)
+        elif action == "search" and self.command == const.METHOD_GET:
+            self._instruction_search(arg)
+        elif action == "adjust" and self.command == const.METHOD_POST:
+            self._instruction_adjust(body)
         else:
             self._handle_error(
                 const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed"
             )
 
+    def _instruction_submit(self, arg: str, body: dict) -> None:
+        uid = self._safe_int(arg)
+        data = storage.add_instruction(uid, body)
+        if not TEST_MODE:
+            self._run_cli(data)
+        self._send_json(const.HTTP_OK, data)
+
+    def _instruction_pop(self, arg: str) -> None:
+        success = storage.pop_instruction(self._safe_int(arg))
+        self._send_json(const.HTTP_OK, {"success": success})
+
+    def _instruction_search(self, arg: str) -> None:
+        session_id = self._safe_int(arg)
+        instructions = storage.get_instructions(session_id)
+        self._send_json(const.HTTP_OK, instructions)
+
+    def _instruction_adjust(self, body: dict) -> None:
+        uid = self._safe_int(str(body.get("uid", 0)))
+        data = storage.update_instruction(uid, body)
+        self._send_json(const.HTTP_OK, data or {})
+
     def _handle_response(self, action: str, arg: str, query: dict) -> None:
-        if action == "search" and self.command == "GET":
+        if action == "search" and self.command == const.METHOD_GET:
             instruction_id = self._safe_int(arg)
             responses = storage.get_responses(instruction_id)
             self._send_json(const.HTTP_OK, responses)
