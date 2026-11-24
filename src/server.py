@@ -94,7 +94,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         parts, query = self._parse_path()
         body = self._read_body()
 
-        if len(parts) < 4 or parts[:3] != PREFIX:
+        if len(parts) < const.PREFIX_LEN or parts[:3] != PREFIX:
             self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
             return
 
@@ -110,8 +110,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         self, parts: list[str], body: dict, query: dict
     ) -> None:
         resource = parts[3]
-        action = parts[4] if len(parts) > 4 else ""
-        arg = parts[5] if len(parts) > 5 else ""
+        action = (
+            parts[const.ACTION_INDEX]
+            if len(parts) > const.ACTION_INDEX
+            else ""
+        )
+        arg = (
+            parts[const.ARG_INDEX]
+            if len(parts) > const.ARG_INDEX
+            else ""
+        )
 
         if resource == RESOURCE_SESSION:
             self._handle_session(action, arg, body, query)
