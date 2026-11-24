@@ -13,6 +13,11 @@ from src import storage
 from src.db import init_db
 
 TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
+PREFIX = ["rest", "api", "v1.0"]
+RESOURCE_SESSION = "session"
+RESOURCE_INSTRUCTION = "instruction"
+RESOURCE_RESPONSE = "response"
+RESOURCE_REPORT = "report"
 
 
 def check_headers(headers: dict) -> tuple[int, str]:
@@ -88,9 +93,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         parts, query = self._parse_path()
         body = self._read_body()
-        prefix = ["rest", "api", "v1.0"]
 
-        if len(parts) < 4 or parts[:3] != prefix:
+        if len(parts) < 4 or parts[:3] != PREFIX:
             self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
             return
 
@@ -99,13 +103,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         arg = parts[5] if len(parts) > 5 else ""
 
         try:
-            if resource == "session":
+            if resource == RESOURCE_SESSION:
                 self._handle_session(action, arg, body, query)
-            elif resource == "instruction":
+            elif resource == RESOURCE_INSTRUCTION:
                 self._handle_instruction(action, arg, body, query)
-            elif resource == "response":
+            elif resource == RESOURCE_RESPONSE:
                 self._handle_response(action, arg, query)
-            elif resource == "report":
+            elif resource == RESOURCE_REPORT:
                 self._send_json(const.HTTP_OK, storage.get_report())
             else:
                 self._handle_error(const.HTTP_NOT_FOUND, "Not Found")
@@ -115,7 +119,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 const.HTTP_INTERNAL_SERVER_ERROR, str(err)
             )
 
-    def _handle_session(self, action: str, arg: str, body: dict, query: dict) -> None:
+    def _handle_session(
+        self, action: str, arg: str, body: dict, query: dict
+    ) -> None:
         if action == "submit" and self.command == "PUT":
             uid = self._safe_int(arg)
             data = storage.add_session(uid, body)
@@ -130,9 +136,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             data = storage.update_session(uid, body)
             self._send_json(const.HTTP_OK, data or {})
         else:
-            self._handle_error(const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed")
+            self._handle_error(
+                const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed"
+            )
 
-    def _handle_instruction(self, action: str, arg: str, body: dict, query: dict) -> None:
+    def _handle_instruction(
+        self, action: str, arg: str, body: dict, query: dict
+    ) -> None:
         if action == "submit" and self.command == "PUT":
             uid = self._safe_int(arg)
             data = storage.add_instruction(uid, body)
@@ -144,22 +154,26 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json(const.HTTP_OK, {"success": success})
         elif action == "search" and self.command == "GET":
             session_id = self._safe_int(arg)
-            self._send_json(const.HTTP_OK, storage.get_instructions(session_id))
+            instructions = storage.get_instructions(session_id)
+            self._send_json(const.HTTP_OK, instructions)
         elif action == "adjust" and self.command == "POST":
             uid = self._safe_int(str(body.get("uid", 0)))
             data = storage.update_instruction(uid, body)
             self._send_json(const.HTTP_OK, data or {})
         else:
-            self._handle_error(const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed")
+            self._handle_error(
+                const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed"
+            )
 
     def _handle_response(self, action: str, arg: str, query: dict) -> None:
         if action == "search" and self.command == "GET":
             instruction_id = self._safe_int(arg)
-            self._send_json(
-                const.HTTP_OK, storage.get_responses(instruction_id)
-            )
+            responses = storage.get_responses(instruction_id)
+            self._send_json(const.HTTP_OK, responses)
         else:
-            self._handle_error(const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed")
+            self._handle_error(
+                const.HTTP_METHOD_NOT_ALLOWED, "Method Not Allowed"
+            )
 
     def _run_cli(self, instruction: dict) -> None:
         """Run CLI compression via subprocess."""
